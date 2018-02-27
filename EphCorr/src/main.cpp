@@ -1,4 +1,4 @@
-﻿#include <numeric>
+#include <numeric>
 #include <fstream>
 #include <sstream>
 
@@ -20,13 +20,13 @@ struct Options
 
 struct Corr
 {
-    double corr[4];
+    double corr[5]; // dr, dt, dn, dclk, dure
     std::string satID;
 };
 
 struct Corrs
 {
-    std::vector<double> corr[4]; // dr, dt, dn, dclk
+    std::vector<double> corr[5]; // dr, dt, dn, dclk, dure
 };
 
 
@@ -118,15 +118,15 @@ void avediff(const std::string &path)
     std::string line;
     std::string satID;
     int lag;
-    double corr[4];
+    double corr[5];
     Corr dcorr{};
     char satMID[7]{};
     while (std::getline(iFile, line))
     {
         std::istringstream ss(line);
-        ss >> satID >> lag >> corr[0] >> corr[1] >> corr[2] >> corr[3];
+        ss >> satID >> lag >> corr[0] >> corr[1] >> corr[2] >> corr[3] >> corr[4];
         dcorr.satID = satID;
-        std::copy(corr, corr + 4, dcorr.corr);
+        std::copy(corr, corr + 5, dcorr.corr);
         snprintf(satMID, 7, "%s%03d", satID.c_str(), lag);
         diffcorr[satMID].push_back(dcorr);
     }
@@ -135,14 +135,14 @@ void avediff(const std::string &path)
 
     for (const auto &item : diffcorr)
     {
-        std::vector<double> dcorrs[4];
+        std::vector<double> dcorrs[5];
 
         oFile << item.first.substr(0, 3) << " " << std::stoi(item.first.substr(3, 3)) << " ";
-        for (unsigned i = 0; i != 4; ++i)
+        for (unsigned i = 0; i != 5; ++i)
         {
             std::transform(item.second.begin(), item.second.end(), std::back_inserter(dcorrs[i]), [&](const Corr &x) {return x.corr[i]; });
             filterOutlier(dcorrs[i]);
-            std::fill(corr, corr + 4, 0);
+            std::fill(corr, corr + 5, 0);
             for (const auto &dc : dcorrs[i])
             {
                 corr[i] += dc;
@@ -179,7 +179,7 @@ void diff(const std::string &path, const int interval, const double *ep, const s
     if (!iFile)
         return;
 
-    double ephCorr[4], epoch[6];
+    double ephCorr[5], epoch[6];
     std::string line, tmp, satID;
     gtime_t cur_gt{}, flagT{};
 
@@ -190,8 +190,8 @@ void diff(const std::string &path, const int interval, const double *ep, const s
     {
         std::istringstream ss(line);
         ss >> epoch[0] >> epoch[1] >> epoch[2] >> epoch[3] >> epoch[4] >> epoch[5] >> satID;
-        ss >> tmp >> ephCorr[0] >> ephCorr[1] >> ephCorr[2] >> tmp >> tmp >> tmp >> ephCorr[3];
-        std::copy(ephCorr, ephCorr + 4, corr.corr);
+        ss >> tmp >> ephCorr[0] >> ephCorr[1] >> ephCorr[2] >> tmp >> ephCorr[4] >> tmp >> ephCorr[3];
+        std::copy(ephCorr, ephCorr + 5, corr.corr);
         corr.satID = satID;
 
         cur_gt = epoch2time(epoch);
@@ -219,7 +219,7 @@ void diff(const std::string &path, const int interval, const double *ep, const s
             {
 
                 oFile << satID << " " << period << " ";
-                for (unsigned i = 0; i != 4; ++i)
+                for (unsigned i = 0; i != 5; ++i)
                 {
                     oFile << abs(ephCorr[i] - it->corr[i]) << " ";
                 }
@@ -236,6 +236,37 @@ void diff(const std::string &path, const int interval, const double *ep, const s
     printf("%d-%02d-%02d %s\n", (int)ep[0], (int)ep[1], (int)ep[2], gnss.c_str());
 }
 
+void finalindex(std::ofstream &out, std::map<int, Corrs> &tCorrs)
+{
+    for (auto &it : tCorrs)
+    {
+        int lag = it.first;
+
+        out << lag << " ";
+        for (unsigned i = 0; i != 5; ++i)
+        {
+            double sum = std::accumulate(it.second.corr[i].begin(), it.second.corr[i].end(), 0.);
+            double mean = sum / it.second.corr[i].size();
+
+            out << mean << " ";
+        }
+
+        for (unsigned i = 0; i != 5; ++i)
+        {
+            double max = *std::max_element(it.second.corr[i].begin(), it.second.corr[i].end());
+            out << max << " ";
+        }
+
+        for (unsigned i = 0; i != 5; ++i)
+        {
+            std::sort(it.second.corr[i].begin(), it.second.corr[i].end());
+            double index_95 = it.second.corr[i][static_cast<int>(it.second.corr[i].size() * 0.95)];
+            out << index_95 << " ";
+        }
+
+        out << '\n';
+    }
+}
 
 void finalGnss(const std::string &dir, const double *startEpoch, const double *endEpoch, const std::string &gnss)
 {
@@ -264,13 +295,13 @@ void finalGnss(const std::string &dir, const double *startEpoch, const double *e
         std::string line;
         std::string prn;
         int lag;
-        double corr[4]{}; // dr, dt, dn, dclk
+        double corr[5]{}; // dr, dt, dn, dclk, dure
         while (std::getline(iFile, line))
         {
             std::istringstream ss(line);
-            ss >> prn >> lag >> corr[0] >> corr[1] >> corr[2] >> corr[3];
+            ss >> prn >> lag >> corr[0] >> corr[1] >> corr[2] >> corr[3] >> corr[4];
 
-            for (unsigned i = 0; i != 4; ++i)
+            for (unsigned i = 0; i != 5; ++i)
             {
                 corrs[prn][lag].corr[i].push_back(corr[i]);
             }
@@ -286,7 +317,12 @@ void finalGnss(const std::string &dir, const double *startEpoch, const double *e
     out.setf(std::ios::fixed, std::ios::floatfield);
     out.precision(3);
 
+    const std::map<std::string, int> bdmap{ {"C01", 0}, {"C02", 0}, {"C03", 0}, {"C04", 0}, {"C05", 0}, {"C06", 0}, {"C07", 0}, {"C08", 0}, {"C09", 0}, {"C10", 0}, {"C11", 1}, {"C12", 1}, {"C13", 0}, {"C14", 1}, {"C17", 0},
+    {"C19", 1}, {"C20", 1}, {"C27", 1}, {"C28", 1}, {"C31", 0}, {"C32", 0}, {"C33", 1}, {"C34", 1}, {"C35", 1} };
+
     std::map<int, Corrs> tCorrs;
+    std::map<int, std::map<int, Corrs>> bdcorrs; // 0:GEO+IGSO 1:MEO; lag:corrs
+    
     for (auto &it : corrs)
     {
         std::string prn = it.first;
@@ -295,11 +331,13 @@ void finalGnss(const std::string &dir, const double *startEpoch, const double *e
             int lag = it.first;
             out << prn << " " << lag << " ";
 
-            for (unsigned i = 0; i != 4; ++i)
+            for (unsigned i = 0; i != 5; ++i)
             {
                 filterOutlier(it.second.corr[i]);
 
                 tCorrs[lag].corr[i].insert(tCorrs[lag].corr[i].end(), it.second.corr[i].begin(), it.second.corr[i].end());
+
+                bdcorrs[bdmap.at(prn)][lag].corr[i].insert(bdcorrs[bdmap.at(prn)][lag].corr[i].end(), it.second.corr[i].begin(), it.second.corr[i].end());
 
                 double sum = std::accumulate(it.second.corr[i].begin(), it.second.corr[i].end(), 0.);
                 double mean = sum / it.second.corr[i].size();
@@ -311,30 +349,19 @@ void finalGnss(const std::string &dir, const double *startEpoch, const double *e
         out << '\n';
     }
 
-    for (const auto &it : tCorrs)
+    if (gnss == "BDS")
     {
-        int lag = it.first;
-
-        out << lag << " ";
-        for (unsigned i = 0; i != 4; ++i)
+        for (auto &it : bdcorrs)
         {
-            double sum = std::accumulate(it.second.corr[i].begin(), it.second.corr[i].end(), 0.);
-            double mean = sum / it.second.corr[i].size();
-
-            out << mean << " ";
+            finalindex(out, it.second);
         }
-
-        for (unsigned i = 0; i != 4; ++i)
-        {
-            double max = *std::max_element(it.second.corr[i].begin(), it.second.corr[i].end());
-            out << max << " ";
-        }
-
-        out << '\n';
+    }
+    else
+    {
+        finalindex(out, tCorrs);
     }
 
     out.close();
-
 }
 
 void aveFinal(const Options &opt)
@@ -381,7 +408,7 @@ void process(const Options &opt)
         }
         else
         {
-                snprintf(file, 19, "cmp_%03d0_%02d_%s.txt", doy, year, opt.strSys.c_str());
+                snprintf(file, 20, "cmp%03d0_%02d_%s.txt", doy, year, opt.strSys.c_str());
                 filesystem::path  path = filesystem::path{ opt.strPath } / filesystem::path{ file };
                 diff(path.str(), opt.iInterval, epoch, opt.strSys);
         }
