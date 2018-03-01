@@ -337,7 +337,10 @@ void finalGnss(const std::string &dir, const double *startEpoch, const double *e
 
                 tCorrs[lag].corr[i].insert(tCorrs[lag].corr[i].end(), it.second.corr[i].begin(), it.second.corr[i].end());
 
-                bdcorrs[bdmap.at(prn)][lag].corr[i].insert(bdcorrs[bdmap.at(prn)][lag].corr[i].end(), it.second.corr[i].begin(), it.second.corr[i].end());
+                if (bdmap.find(prn) != bdmap.end())
+                {
+                    bdcorrs[bdmap.at(prn)][lag].corr[i].insert(bdcorrs[bdmap.at(prn)][lag].corr[i].end(), it.second.corr[i].begin(), it.second.corr[i].end());
+                }
 
                 double sum = std::accumulate(it.second.corr[i].begin(), it.second.corr[i].end(), 0.);
                 double mean = sum / it.second.corr[i].size();

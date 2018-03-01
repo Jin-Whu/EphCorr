@@ -28,12 +28,9 @@ void filterOutlier(std::vector<double> &vec)
     else
         mad = mads[nums / 2];
 
-    std::vector<int> outliersIndex;
-
     auto finder = [&](const double &x) {
         double value = 0.6745 * abs(x - median) / mad;
         return value > 3.5;
     };
     vec.erase(std::remove_if(vec.begin(), vec.end(), finder), vec.end());
-
 }
